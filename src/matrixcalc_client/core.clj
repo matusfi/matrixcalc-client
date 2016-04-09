@@ -35,6 +35,13 @@
       json/read-str
       (get "result")))
 
+(defn get-error
+  [res-future]
+  (-> @res-future
+      :body
+      json/read-str
+      (get "error")))
+
 (defn gen-mtx
   "Generate matrices of using a generator with specified dimensions"
   [generator size]
@@ -68,13 +75,17 @@
   (str r "-" c))
 
 (defn at
-  "Get a value at specified position in the matrix"
-  [mtx pos]
-  (let [row (dec (:row pos))
-        col (dec (:col pos))]
-    (-> mtx
-        (nth row nil)
-        (nth col nil))))
+  "Get/set a value at specified position in the matrix"
+  ([mtx pos]
+   (let [row (dec (:row pos))
+         col (dec (:col pos))]
+     (-> mtx
+         (nth row nil)
+         (nth col nil))))
+  ([mtx pos val]
+   (let [row (dec (:row pos))
+         col (dec (:col pos))]
+     (assoc-in mtx [row col] val))))
 
 
 ;;; Properties
@@ -97,7 +108,7 @@
 (defn make-prop
   [mtx-gen val-gen mtx-size test-fn]
   (prop/for-all [mtx (mtx-gen val-gen mtx-size)]
-                (test-fn mtx)))
+                      (test-fn mtx)))
 
 (defn make-url
   [base-url op pos-a pos-b]
@@ -128,7 +139,26 @@
 
 (def basic-props
   (let [tests (map #(test-over-url url %) operations)]
-    ))
+    (map #(make-prop gen-non-zero-mtx gen-int default-mtx-size %) tests)))
+
+(defn test-url-with-zero
+  [base-url]
+  (fn [mtx]
+    (let [size  (count mtx)
+          pos-a (rand-pos size)
+          pos-b (rand-pos size)
+          mtx-with-zero (at mtx pos-b 0)
+          url   (make-url base-url
+                          {:op "divide" :fn /}
+                          pos-a pos-b)
+          res-f (make-request url (make-mtx mtx-with-zero))]
+      (not (nil? (get-error res-f))))))
+
+(def div-by-zero-prop
+  (make-prop gen-non-zero-mtx
+             gen-int
+             default-mtx-size
+             (test-url-with-zero url)))
 
 (defn test-props
   [test-size properties]
