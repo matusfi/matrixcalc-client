@@ -1,20 +1,13 @@
 (ns matrixcalc-client.core
-  (:use midje.sweet)
   (:require [org.httpkit.client :as http]
             [clojure.data.json  :as json]
             [clojure.string     :as str]
-            [clojure.test :refer :all]
             [clojure.test.check :as tc]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop])
   (:gen-class))
 
-(defn -main
-  "I don't do a whole lot ... yet."
-  [& args]
-  (println "Hello, World!"))
-
-(def url
+(def ^:dynamic *url*
   "http://matrixcalc.demecko.com/api/")
 
 (defn make-mtx
@@ -246,25 +239,43 @@
         (log-fail expected actual url mtx op))
       pass?)))
 
-(def basic-props
-  (let [tests (map #(test-over-url url %) operations)]
+(defn basic-props
+  []
+  (let [tests (map #(test-over-url *url* %) operations)]
     (map #(make-prop gen-non-zero-mtx gen-int default-mtx-size %) tests)))
 
-(def div-by-zero-prop
+(defn div-by-zero-prop
+  []
   (make-prop gen-non-zero-mtx
              gen-int
              default-mtx-size
-             (test-url-with-zero url)))
+             (test-url-with-zero *url*)))
 
-(def range-ops-props
-  (let [tests (map #(test-ranged url %) range-ops)]
+(defn range-ops-props
+  []
+  (let [tests (map #(test-ranged *url* %) range-ops)]
     (map #(make-prop gen-mtx gen-int default-mtx-size %) tests)))
 
-(def whole-mtx-props
-  (let [tests (map #(test-on-whole-mtx url %) range-ops)]
+(defn whole-mtx-props
+  []
+  (let [tests (map #(test-on-whole-mtx *url* %) range-ops)]
     (map #(make-prop gen-mtx gen-int default-mtx-size %) tests)))
 
 (defn test-props
   [test-size properties]
   (for [prop properties]
     (tc/quick-check test-size prop)))
+
+(defn -main
+  "I don't do a whole lot ... yet."
+  [& args]
+  (assert (not (zero? (count args))))
+  (binding [*url* (first args)]
+    (println "Starting tests...")
+    (println "Testing...")
+    (let [all-props (conj (basic-props) (div-by-zero-prop) (range-ops-props) (whole-mtx-props))
+          test-size (if (nil? (second args)) 5 (second args))]
+      (println *url*)
+      (println (count all-props))
+      (test-props test-size all-props))
+    (println "Done.")))
