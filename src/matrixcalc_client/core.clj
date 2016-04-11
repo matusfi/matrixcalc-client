@@ -21,6 +21,24 @@
   [m]
   {:matrix m})
 
+(defn pos->string
+  [{r :row, c :col}]
+  (str r "-" c))
+
+(defn make-url
+  "Piece together an URL for the API usage"
+  ([base-url op]
+   (str base-url (:op op)))
+  ([base-url op range]
+   (str (make-url base-url op)
+        "?range=" (pos->string range)))
+  ([base-url op pos-a pos-b]
+   (str (make-url base-url op)
+        "/"
+        (pos->string pos-a)
+        "/"
+        (pos->string pos-b))))
+
 (defn make-request
   [url body]
   (http/request {:url url,
@@ -64,15 +82,17 @@
                 :NaN?      false}))
 
 (defn rand-pos
-  [range]
-  (let [r (inc (rand-int range))
-        c (inc (rand-int range))]
+  [size]
+  (let [r (inc (rand-int size))
+        c (inc (rand-int size))]
     {:row r
      :col c}))
 
-(defn pos-to-string
-  [{r :row, c :col}]
-  (str r "-" c))
+(defn rand-range
+  [size]
+  (let [where (if (zero? (rand-int 2)) :row :col)
+        pos   (rand-pos size)]
+    (assoc pos where \x)))
 
 (defn at
   "Get/set a value at specified position in the matrix"
@@ -87,6 +107,21 @@
          col (dec (:col pos))]
      (assoc-in mtx [row col] val))))
 
+(defn get-range
+  [mtx range]
+  (let [where (if (= (:row range) \x) :col :row)
+        pos   (dec (if (= where :row)
+                     (:row range)
+                     (:col range)))]
+    (if (= where :row)
+      (nth mtx pos)
+      (map #(nth % pos) mtx))))
+
+(defn round
+  "Round down a double to the given precision (number of significant digits)"
+  [^double d ^long precision]
+  (let [factor (Math/pow 10 precision)]
+    (/ (Math/floor (* d factor)) factor)))
 
 ;;; Properties
 
@@ -105,26 +140,53 @@
    {:op "multiply" :fn *'}
    {:op "divide" :fn /}])
 
+(def range-ops
+  [{:op "sum" :fn +}
+   {:op "product" :fn *}
+   {:op "max" :fn max}
+   {:op "min" :fn min}
+   {:op "average" :fn (fn [& args]
+                        (let [cnt (count args)
+                              sum (apply + args)]
+                          (if (zero? cnt) 0
+                              (round (double (/ sum cnt))
+                                     2))))}])
+
 (defn make-prop
   [mtx-gen val-gen mtx-size test-fn]
   (prop/for-all [mtx (mtx-gen val-gen mtx-size)]
                       (test-fn mtx)))
 
-(defn make-url
-  [base-url op pos-a pos-b]
-  (str base-url
-       (:op op)
-       "/"
-       (pos-to-string pos-a)
-       "/"
-       (pos-to-string pos-b)))
-
 (defn fn-over-mtx
+  ([mtx op]
+   (apply (:fn op) (flatten mtx)))
+  ([mtx op range]
+   (apply (:fn op) (get-range mtx range)))
   ([mtx op pos-a pos-b]
    (let [val-a (at mtx pos-a)
          val-b (at mtx pos-b)
          fun   (:fn op)]
      (fun val-a val-b))))
+
+(defn log-fail
+  ([expected actual url mtx op]
+   (println
+    "FAIL: expected '" expected "' but was '" actual "', "
+    "[" url "], "
+    "op: "(:op op)))
+  ([expected actual url mtx op range]
+   (println
+    "FAIL: expected '" expected "' but was '" actual "', "
+    "[" url "], "
+    "op: "(:op op) ", "
+    "range: " (pos->string range)))
+  ([expected actual url mtx op pos-a pos-b]
+   (println
+    "FAIL: expected '" expected "' but was '" actual "', "
+    "[" url "], "
+    "op: "(:op op) ", "
+    "pos-a: " (pos->string pos-a) ", "
+    "pos-b: " (pos->string pos-b))))
 
 (defn test-over-url
   [base-url op]
@@ -132,14 +194,14 @@
     (let [size  (count mtx)
           pos-a (rand-pos size)
           pos-b (rand-pos size)
-          res-local (fn-over-mtx mtx op pos-a pos-b)
+          expected (fn-over-mtx mtx op pos-a pos-b)
           url   (make-url base-url op pos-a pos-b)
-          res-f (make-request url (make-mtx mtx))]
-      (= res-local (get-result res-f)))))
-
-(def basic-props
-  (let [tests (map #(test-over-url url %) operations)]
-    (map #(make-prop gen-non-zero-mtx gen-int default-mtx-size %) tests)))
+          res-f (make-request url (make-mtx mtx))
+          actual   (get-result res-f)
+          pass? (= expected actual)]
+      (when-not pass?
+        (log-fail expected actual url mtx op pos-a pos-b))
+      pass?)))
 
 (defn test-url-with-zero
   [base-url]
@@ -151,8 +213,42 @@
           url   (make-url base-url
                           {:op "divide" :fn /}
                           pos-a pos-b)
-          res-f (make-request url (make-mtx mtx-with-zero))]
-      (not (nil? (get-error res-f))))))
+          res-f (make-request url (make-mtx mtx-with-zero))
+          error (get-error res-f)
+          pass? (not (nil? error))]
+      (when-not pass?
+        (println "FAIL: No error reported when attempting division by zero. " @res-f))
+      pass?)))
+
+(defn test-ranged
+  [base-url op]
+  (fn [mtx]
+    (let [size  (count mtx)
+          range (rand-range size)
+          expected (fn-over-mtx mtx op range)
+          url   (make-url base-url op range)
+          res-f (make-request url (make-mtx mtx))
+          actual (get-result res-f)
+          pass? (= expected actual)]
+      (when-not pass?
+        (log-fail expected actual url mtx op range))
+      pass?)))
+
+(defn test-on-whole-mtx
+  [base-url op]
+  (fn [mtx]
+    (let [expected (fn-over-mtx mtx op)
+          url       (make-url base-url op)
+          res-f     (make-request url (make-mtx mtx))
+          actual    (get-result res-f)
+          pass?     (= expected actual)]
+      (when-not pass?
+        (log-fail expected actual url mtx op))
+      pass?)))
+
+(def basic-props
+  (let [tests (map #(test-over-url url %) operations)]
+    (map #(make-prop gen-non-zero-mtx gen-int default-mtx-size %) tests)))
 
 (def div-by-zero-prop
   (make-prop gen-non-zero-mtx
@@ -160,18 +256,15 @@
              default-mtx-size
              (test-url-with-zero url)))
 
+(def range-ops-props
+  (let [tests (map #(test-ranged url %) range-ops)]
+    (map #(make-prop gen-mtx gen-int default-mtx-size %) tests)))
+
+(def whole-mtx-props
+  (let [tests (map #(test-on-whole-mtx url %) range-ops)]
+    (map #(make-prop gen-mtx gen-int default-mtx-size %) tests)))
+
 (defn test-props
   [test-size properties]
   (for [prop properties]
     (tc/quick-check test-size prop)))
-
-
-;;; Get Random Matrix
-;;; Choose rand positions (pos-a & pos-b)
-;;; Perform a function over the Mtx locally => get the local-result
-
-;;; Construct the operation URL
-;;; Send request => get the remote-result
-;;; Results should be the equal
-
-
