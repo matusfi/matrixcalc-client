@@ -114,7 +114,15 @@
   "Round down a double to the given precision (number of significant digits)"
   [^double d ^long precision]
   (let [factor (Math/pow 10 precision)]
-    (/ (Math/floor (* d factor)) factor)))
+    (/ (Math/round (* d factor)) factor)))
+
+(defn equals
+  [a b]
+  (if (or (= java.lang.Double (type a))
+          (= java.lang.Double (type b)))
+    (let [precision 0.02]
+      (<= (Math/abs (- a b)) precision))
+    (== a b)))
 
 ;;; Properties
 
@@ -164,22 +172,25 @@
 (defn log-fail
   ([expected actual url mtx op]
    (println
-    "FAIL: expected '" expected "' but was '" actual "', "
-    "[" url "], "
-    "op: "(:op op)))
+    (str "FAIL: expected '" expected "' but was '" actual "', "
+         "[" url "], "
+         "op: " (:op op) ", "
+         "mtx: " mtx)))
   ([expected actual url mtx op range]
    (println
-    "FAIL: expected '" expected "' but was '" actual "', "
-    "[" url "], "
-    "op: "(:op op) ", "
-    "range: " (pos->string range)))
+    (str  "FAIL: expected '" expected "' but was '" actual "', "
+          "[" url "], "
+          "op: "(:op op) ", "
+          "range: " (pos->string range) ", "
+          "mtx: " mtx)))
   ([expected actual url mtx op pos-a pos-b]
    (println
-    "FAIL: expected '" expected "' but was '" actual "', "
-    "[" url "], "
-    "op: "(:op op) ", "
-    "pos-a: " (pos->string pos-a) ", "
-    "pos-b: " (pos->string pos-b))))
+    (str "FAIL: expected '" expected "' but was '" actual "', "
+         "[" url "], "
+         "op: "(:op op) ", "
+         "pos-a: " (pos->string pos-a) ", "
+         "pos-b: " (pos->string pos-b) ", "
+         "mtx: " mtx))))
 
 (defn test-over-url
   [base-url op]
@@ -191,7 +202,7 @@
           url   (make-url base-url op pos-a pos-b)
           res-f (make-request url (make-mtx mtx))
           actual   (get-result res-f)
-          pass? (= expected actual)]
+          pass? (equals expected actual)]
       (when-not pass?
         (log-fail expected actual url mtx op pos-a pos-b))
       pass?)))
@@ -222,7 +233,7 @@
           url   (make-url base-url op range)
           res-f (make-request url (make-mtx mtx))
           actual (get-result res-f)
-          pass? (= expected actual)]
+          pass? (equals expected actual)]
       (when-not pass?
         (log-fail expected actual url mtx op range))
       pass?)))
@@ -234,48 +245,61 @@
           url       (make-url base-url op)
           res-f     (make-request url (make-mtx mtx))
           actual    (get-result res-f)
-          pass?     (= expected actual)]
+          pass?     (equals expected actual)]
       (when-not pass?
         (log-fail expected actual url mtx op))
       pass?)))
 
 (defn basic-props
   []
-  (let [tests (map #(test-over-url *url* %) operations)]
-    (map #(make-prop gen-non-zero-mtx gen-int default-mtx-size %) tests)))
+  (let [tests (map #(test-over-url *url* %) operations)
+        props (map #(make-prop gen-non-zero-mtx gen-int default-mtx-size %) tests)]
+    {:desc  "Basic Properties"
+     :ops   (map :op operations)
+     :props props}))
 
 (defn div-by-zero-prop
   []
-  (make-prop gen-non-zero-mtx
-             gen-int
-             default-mtx-size
-             (test-url-with-zero *url*)))
+  (let [prop (make-prop gen-non-zero-mtx
+                        gen-int
+                        default-mtx-size
+                        (test-url-with-zero *url*))]
+    {:desc  "Division-by-zero"
+     :ops   (list "divide")
+     :props (list prop)}))
 
 (defn range-ops-props
   []
-  (let [tests (map #(test-ranged *url* %) range-ops)]
-    (map #(make-prop gen-mtx gen-int default-mtx-size %) tests)))
+  (let [tests (map #(test-ranged *url* %) range-ops)
+        props (map #(make-prop gen-mtx gen-int default-mtx-size %) tests)]
+    {:desc  "Ranged operations"
+     :ops   (map :op range-ops)
+     :props props}))
 
 (defn whole-mtx-props
   []
-  (let [tests (map #(test-on-whole-mtx *url* %) range-ops)]
-    (map #(make-prop gen-mtx gen-int default-mtx-size %) tests)))
+  (let [tests (map #(test-on-whole-mtx *url* %) range-ops)
+        props (map #(make-prop gen-mtx gen-int default-mtx-size %) tests)]
+    {:desc  "Whole matrix operations"
+     :ops   (map :op range-ops)
+     :props props}))
 
 (defn test-props
   [test-size properties]
   (for [prop properties]
-    (tc/quick-check test-size prop)))
+    (dorun
+     (do
+       (println "Testing" (:desc prop) "=>" (:ops prop))
+       (for [p (:props prop)]
+         (tc/quick-check test-size p))))))
 
 (defn -main
-  "I don't do a whole lot ... yet."
   [& args]
   (assert (not (zero? (count args))))
   (binding [*url* (first args)]
-    (println "Starting tests...")
-    (println "Testing...")
-    (let [all-props (conj (basic-props) (div-by-zero-prop) (range-ops-props) (whole-mtx-props))
+    (let [all-props (vector (basic-props)
+                            (div-by-zero-prop)
+                            (range-ops-props) 
+                            (whole-mtx-props))
           test-size (if (nil? (second args)) 5 (second args))]
-      (println *url*)
-      (println (count all-props))
-      (test-props test-size all-props))
-    (println "Done.")))
+      (dorun (test-props test-size all-props)))))
