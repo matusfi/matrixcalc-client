@@ -301,5 +301,5 @@
                             (div-by-zero-prop)
                             (range-ops-props) 
                             (whole-mtx-props))
-          test-size (if (nil? (second args)) 5 (second args))]
+          test-size (if (nil? (second args)) 5 (read-string (second args)))]
       (dorun (test-props test-size all-props)))))
