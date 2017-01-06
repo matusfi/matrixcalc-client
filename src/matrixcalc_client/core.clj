@@ -18,6 +18,13 @@
   [{r :row, c :col}]
   (str r "-" c))
 
+(defn fix-url 
+  [unsafe-url]
+  (let [trimmed-url (str/trim unsafe-url)]
+    (if (= \/ (last trimmed-url))
+      trimmed-url
+      (str trimmed-url \/))))
+
 (defn make-url
   "Piece together an URL for the API usage"
   ([base-url op]
@@ -296,10 +303,11 @@
 (defn -main
   [& args]
   (assert (not (zero? (count args))))
-  (binding [*url* (first args)]
+  (binding [*url* (fix-url (first args))]
     (let [all-props (vector (basic-props)
                             (div-by-zero-prop)
                             (range-ops-props) 
                             (whole-mtx-props))
           test-size (if (nil? (second args)) 5 (read-string (second args)))]
+      (println "Tested URL: " *url*) 
       (dorun (test-props test-size all-props)))))
