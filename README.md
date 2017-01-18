@@ -65,6 +65,21 @@ FAIL: expected '0' but was '2', [http://private-f056ad-matrixcalc.apiary-mock.co
 ...
 ```
 
+## TODO
+
+- split `core.clj` into:
+    + matrix handling (generators, support functions, etc)
+    + program entry and setup
+    + test.check properties
+- remove unnecessary functions
+- sort the remaining functions so it's easy to read the code
+- add usability features
+    + a nice error message when incorrect arguments are used (currently prints a stack trace, ugh)
+
+## Known Issues
+
+- if the API is not reachable, or it doesn't respond with JSON, all tests pass silently
+
 ## License
 
 Distributed under the Eclipse Public License either version 1.0 or (at
