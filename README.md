@@ -78,4 +78,4 @@ FAIL: expected '0' but was '2', [http://private-f056ad-matrixcalc.apiary-mock.co
 
 ## License
 
-Unlicensed!
+[Unlicensed!](http://unlicense.org)

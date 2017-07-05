@@ -1,8 +1,8 @@
-(defproject matrixcalc-client "0.1.0"
+(defproject matrixcalc-client "0.2.0"
   :description "A generative test suite for the Matrix Calculator API implementations (http://docs.matrixcalc.apiary.io/)"
   :url "https://github.com/matusfi/matrixcalc-client"
-  :license {:name "Eclipse Public License"
-            :url "http://www.eclipse.org/legal/epl-v10.html"}
+  :license {:name "Unlicense"
+            :url "http://unlicense.org"}
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [http-kit "2.1.19"]
                  [org.clojure/data.json "0.2.6"]
