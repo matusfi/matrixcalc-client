@@ -67,10 +67,6 @@ FAIL: expected '0' but was '2', [http://private-f056ad-matrixcalc.apiary-mock.co
 
 ## TODO
 
-- split `core.clj` into:
-    + matrix handling (generators, support functions, etc)
-    + program entry and setup
-    + test.check properties
 - remove unnecessary functions
 - sort the remaining functions so it's easy to read the code
 - add usability features
@@ -82,5 +78,4 @@ FAIL: expected '0' but was '2', [http://private-f056ad-matrixcalc.apiary-mock.co
 
 ## License
 
-Distributed under the Eclipse Public License either version 1.0 or (at
-your option) any later version.
+Unlicensed!
